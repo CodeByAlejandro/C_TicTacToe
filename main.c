@@ -29,7 +29,7 @@ int calcNumberWidth(int number);
  */
 int main(int argc, char **argv) {
     // Set main game variables
-	bool isPlayer1X = true;
+    bool isPlayer1X = true;
     bool isPlayer1Turn = true;
     int player1Score = 0;
     int player2Score = 0;
