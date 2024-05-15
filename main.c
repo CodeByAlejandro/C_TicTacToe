@@ -4,11 +4,12 @@
 
 #define TITLE "Tic Tac Toe"
 #define TITLE_LENGTH strlen(TITLE)
-#define ROWS 3
-#define COLUMNS 3
-#define N_IN_A_ROW 3
 #define BLANC_FIELD_VALUE ' '
 
+enum yesOrNo { YES, NO };
+
+enum yesOrNo yesOrNoQuestion(char *question, enum yesOrNo defaultAnswer);
+int requestIntInRange(char *question, int lowerBound, int upperBound);
 void initializeBoard(char board[ROWS][COLUMNS]);
 int requestPlayerInput(int playerNbr);
 bool markBoard(char board[ROWS][COLUMNS], int fieldNbr, char mark);
@@ -28,6 +29,21 @@ int calcNumberWidth(int number);
  * main function with main game loop
  */
 int main(int argc, char **argv) {
+    // Request constants with game properties
+    printTitle(0);
+    int rows = 3;
+    int columns = 3;
+    int nInARow = 3;
+    enum yesOrNo answer = yesOrNoQuestion("Do you want to play default TicTacToe?", YES);
+    if (answer == NO) {
+        int rows = requestIntInRange("Enter number of rows for board/grid", 3, 40);
+        int columns = requestIntInRange("Enter number of columns for board/grid", 3, 60);
+        int nInARow = requestIntInRange("Enter number of consecutive marks needed for a win", 3, 40);
+    }
+    static const ROWS = rows;
+    static const COLUMNS = columns;
+    static const N_IN_A_ROW = nInARow;
+    
     // Set main game variables
     bool isPlayer1X = true;
     bool isPlayer1Turn = true;
@@ -80,31 +96,12 @@ int main(int argc, char **argv) {
         if (isGameOver) {
             // Say who wins
             isPlayer1Turn ? printf("=> Player1 wins!\n\n") : printf("=> Player2 wins!\n\n");
-            char answer;
-            do {
-                // Pose continue game question
-                printf("Do you want a rematch? [Y/N] (Y): ");
-                // get answer char
-                answer = getchar();
-                // If nothing is entered, default is answer is 'Y' (= yes to rematch)
-                if (answer == '\n') {
-                    answer = 'Y';
-                } else {
-                    // Consume leftover chars till end of line
-                    for (char c; (c = getchar()) != '\n' && c != EOF;) {
-                        // When multiple characters were entered,
-                        // set invalid answer to restart rematch-loop
-                        if (answer != '\0') {
-                            answer = '\0';
-                        }
-                    }
-                }
-            } while (answer != 'Y' && answer != 'N' && answer != 'y' && answer != 'n');
+            // Pose rematch game question
+            enum yesOrNo answer = yesOrNoQuestion("Do you want a rematch?", YES);
             // Check the answer for the rematch question
             switch (answer) {
                 // When rematch is selected
-                case 'Y':
-                case 'y':
+                case YES:
                     // Increment player score
                     isPlayer1Turn ? player1Score++ : player2Score++;
                     // Switch who's X now, since X will always start
@@ -116,8 +113,7 @@ int main(int argc, char **argv) {
                     returnCode = refreshScreen(isPlayer1X, player1Score, player2Score, board);
                     break;
                 // When game is to be exited
-                case 'N':
-                case 'n':
+                case NO:
                     isEscExitGame = true;
                     printf("\nAs if you have anything better to do... ;)\n");
                     break;
@@ -131,6 +127,71 @@ int main(int argc, char **argv) {
     
     // Return exit code when game is to be exited
     return returnCode;
+}
+
+/*
+ * Request yes-or-no-question with default value
+ */
+enum yesOrNo yesOrNoQuestion(char *question, enum yesOrNo defaultAnswer) {
+    // Ask question till we get a valid answer
+    char answer;
+    do {
+        // Pose yes-or-no-question
+        printf("%s [Y/N] (%c): ", question, defaultAnswer == YES ? 'Y' : 'N');
+        // get answer char
+        answer = getchar();
+        // If nothing is entered, set default answer
+        if (answer == '\n') {
+            answer = defaultAnswer == YES ? 'Y' : 'N';
+        } else {
+            // Consume leftover chars till end of line
+            for (char c; (c = getchar()) != '\n' && c != EOF;) {
+                // When multiple characters were entered,
+                // set invalid answer to restart rematch-loop
+                if (answer != '\0') {
+                    answer = '\0';
+                }
+            }
+        }
+    } while (answer != 'Y' && answer != 'N' && answer != 'y' && answer != 'n');
+    
+    // Translate answer to enum
+    enum yesOrNo answerAsEnum;
+    switch(answer) {
+        case 'Y':
+        case 'y':
+            answerAsEnum = YES;
+            break;
+        case 'N':
+        case 'n':
+            answerAsEnum = NO;
+            break;
+    }
+    
+    // Return enum answer
+    return answerAsEnum;
+}
+
+/*
+ * Request an integer number in a given range, denoted by a lower bound and upper bound (inclusive)
+ */
+int requestIntInRange(char *question, int lowerBound, int upperBound) {
+    int returnValue;
+    bool validInput = false;
+    do {
+        printf("\n%s (min. %d, max. %d) > ", question, lowerBound, upperBound);
+        int result = scanf("%d", &returnValue);
+        if (result != 1) {
+            printf("Please provide a valid integer number!\n");
+        } else if (returnValue < lowerBound || returnValue > upperBound) {
+            printf("Please provide a valid number in the range %d - %d!\n", lowerBound, upperBound);
+        } else {
+            validInput = true;
+        }
+        // Consume leftover chars till end of line
+        for (char c; (c = getchar()) != '\n' && c != EOF;);
+    } while (!validInput);
+    return returnValue;
 }
 
 /*
