@@ -322,9 +322,6 @@ bool markBoard(int fieldNbr, char mark) {
     int rowIdx = getRowIdxForFieldNbr(fieldNbr);
     int columnIdx = getColumnIdxForFieldNbr(fieldNbr);
     
-    printf("rowIdx is %d\n", rowIdx);
-    printf("columnIdx is %d\n", columnIdx);
-    
     // Mark board if field is still blanc
     if (BOARD[rowIdx][columnIdx] == BLANC_FIELD_VALUE) {
         BOARD[rowIdx][columnIdx] = mark;
