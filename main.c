@@ -1,48 +1,75 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdlib.h>
 
+// Some hardcoded constants
 #define TITLE "Tic Tac Toe"
 #define TITLE_LENGTH strlen(TITLE)
-#define ROWS 3
-#define COLUMNS 3
-#define N_IN_A_ROW 3
 #define BLANC_FIELD_VALUE ' '
+#define MAX_ROWS 30
+#define MAX_COLUMNS 50
 
-void initializeBoard(char board[ROWS][COLUMNS]);
+// enums
+enum yesOrNo { YES, NO };
+
+// function prototypes
+int requestGameProperties(void);
+int allocateBoardMemory(void);
+void freeDynamicMemory(void);
+enum yesOrNo yesOrNoQuestion(char *question, enum yesOrNo defaultAnswer);
+int requestIntInRange(char *question, int lowerBound, int upperBound);
+void initializeBoard(void);
 int requestPlayerInput(int playerNbr);
-bool markBoard(char board[ROWS][COLUMNS], int fieldNbr, char mark);
-bool chkWinCondition(char board[ROWS][COLUMNS], int fieldNbr, char mark);
-int chkAdjMarksInDirection(char board[ROWS][COLUMNS], int rowIdx, int columnIdx, int rowStep, int columnStep, char mark);
+bool markBoard(int fieldNbr, char mark);
+bool chkWinCondition(int fieldNbr, char mark);
+int chkAdjMarksInDirection(int rowIdx, int columnIdx, int rowStep, int columnStep, char mark);
 int getRowIdxForFieldNbr(int fieldNbr);
 int getColumnIdxForFieldNbr(int fieldNbr);
-int refreshScreen(bool isPlayer1X, int player1Score, int player2Score, char board[ROWS][COLUMNS]);
+int refreshScreen(bool isPlayer1X, int player1Score, int player2Score);
 int printHeader(bool isPlayer1X, int player1Score, int player2Score);
 void printTitle(int rowWidth);
 int printScores(bool isPlayer1X, int player1Score, int player2Score, int rowWidth);
-int drawBoard(char board[ROWS][COLUMNS]);
+int drawBoard(void);
 int calcFieldWidth(void);
 int calcNumberWidth(int number);
+
+// Global pointers to dynamically allocated memory
+int *ROWS = NULL;
+int *COLUMNS = NULL;
+int *N_IN_A_ROW = NULL;
+char **BOARD = NULL;
 
 /*
  * main function with main game loop
  */
 int main(int argc, char **argv) {
+    int returnCode = 0;
+        
+    // Request global constants with game properties
+    returnCode = requestGameProperties();
+    if (returnCode != 0) return returnCode;
+    
+    // Allocate board memory
+    returnCode = allocateBoardMemory();
+    if (returnCode != 0) return returnCode;
+    
     // Set main game variables
     bool isPlayer1X = true;
     bool isPlayer1Turn = true;
     int player1Score = 0;
     int player2Score = 0;
-    char board[ROWS][COLUMNS];
     int fieldNbr = 0;
     bool isGameOver = false;
     bool isEscExitGame = false;
-    int returnCode = 0;
 
     // Initialize game
-    initializeBoard(board);
-    returnCode = refreshScreen(isPlayer1X, player1Score, player2Score, board);
-    if (returnCode != 0) return returnCode;
+    initializeBoard();
+    returnCode = refreshScreen(isPlayer1X, player1Score, player2Score);
+    if (returnCode != 0) {
+        freeDynamicMemory();
+        return returnCode;
+    }
     
     // Main game loop
     do {
@@ -66,45 +93,26 @@ int main(int argc, char **argv) {
             }
         }
         // Mark the board at the given field number with the current player's mark
-        bool validMark = markBoard(board, fieldNbr, mark);
+        bool validMark = markBoard(fieldNbr, mark);
         // If the mark is invalid, just repeat the question
         if (!validMark) {
             continue;
         }
         // Refresh the screen to show the new mark
-        returnCode = refreshScreen(isPlayer1X, player1Score, player2Score, board);
+        returnCode = refreshScreen(isPlayer1X, player1Score, player2Score);
         if (returnCode != 0) break;
         // Check if current player has won
-        isGameOver = chkWinCondition(board, fieldNbr, mark);
+        isGameOver = chkWinCondition(fieldNbr, mark);
         // If current player wins, propose optional rematch
         if (isGameOver) {
             // Say who wins
             isPlayer1Turn ? printf("=> Player1 wins!\n\n") : printf("=> Player2 wins!\n\n");
-            char answer;
-            do {
-                // Pose continue game question
-                printf("Do you want a rematch? [Y/N] (Y): ");
-                // get answer char
-                answer = getchar();
-                // If nothing is entered, default is answer is 'Y' (= yes to rematch)
-                if (answer == '\n') {
-                    answer = 'Y';
-                } else {
-                    // Consume leftover chars till end of line
-                    for (char c; (c = getchar()) != '\n' && c != EOF;) {
-                        // When multiple characters were entered,
-                        // set invalid answer to restart rematch-loop
-                        if (answer != '\0') {
-                            answer = '\0';
-                        }
-                    }
-                }
-            } while (answer != 'Y' && answer != 'N' && answer != 'y' && answer != 'n');
+            // Pose rematch game question
+            enum yesOrNo answer = yesOrNoQuestion("Do you want a rematch?", YES);
             // Check the answer for the rematch question
             switch (answer) {
                 // When rematch is selected
-                case 'Y':
-                case 'y':
+                case YES:
                     // Increment player score
                     isPlayer1Turn ? player1Score++ : player2Score++;
                     // Switch who's X now, since X will always start
@@ -112,12 +120,11 @@ int main(int argc, char **argv) {
                     // Switch who gets to start based on who's X
                     isPlayer1Turn = isPlayer1X;
                     // Initialize game again
-                    initializeBoard(board);
-                    returnCode = refreshScreen(isPlayer1X, player1Score, player2Score, board);
+                    initializeBoard();
+                    returnCode = refreshScreen(isPlayer1X, player1Score, player2Score);
                     break;
                 // When game is to be exited
-                case 'N':
-                case 'n':
+                case NO:
                     isEscExitGame = true;
                     printf("\nAs if you have anything better to do... ;)\n");
                     break;
@@ -130,16 +137,153 @@ int main(int argc, char **argv) {
     } while (!isEscExitGame);
     
     // Return exit code when game is to be exited
+    freeDynamicMemory();
     return returnCode;
+}
+
+/*
+ * Request game properties (= constants) and set them through global pointers
+ */
+int requestGameProperties(void) {
+    printTitle(0);
+    ROWS = (int *) malloc(sizeof(int));
+    if (ROWS == NULL) {
+        printf("=> Memory allocation for number of rows failed!\n");
+        return 1;
+    }
+    COLUMNS = (int *) malloc(sizeof(int));
+    if (COLUMNS == NULL) {
+        printf("=> Memory allocation for number of columns failed!\n");
+        free(ROWS);
+        return 1;
+    }
+    N_IN_A_ROW = (int *) malloc(sizeof(int));
+    if (N_IN_A_ROW == NULL) {
+        printf("=> Memory allocation for number of similar marks in string failed!\n");
+        free(ROWS);
+        free(COLUMNS);
+        return 1;
+    }
+    enum yesOrNo answer = yesOrNoQuestion("Do you want to play default TicTacToe?", YES);
+    *ROWS = answer == YES ? 3 : requestIntInRange("Enter number of rows for board/grid", 3, MAX_ROWS);
+    *COLUMNS = answer == YES ? 3 : requestIntInRange("Enter number of columns for board/grid", 3, MAX_COLUMNS);
+    *N_IN_A_ROW = answer == YES ? 3 : requestIntInRange("Enter number of consecutive marks needed for a win", 3, *ROWS < *COLUMNS ? *ROWS : *COLUMNS);
+    return 0;
+}
+
+/*
+ * Dynamically allocate board memory based on game properties
+ * and set it through a global pointer
+ */
+int allocateBoardMemory(void) {
+    int returnValue = 0;
+    BOARD = (char **) malloc(*ROWS * sizeof(char *));
+    if (BOARD == NULL) {
+        printf("=> Memory allocation for board failed!\n");
+        returnValue = 1;
+    } else {
+        for (int i = 0; i < *ROWS; i++) {
+            BOARD[i] = (char *) malloc(*COLUMNS * sizeof(char));
+            if (BOARD[i] == NULL) {
+                printf("=> Memory allocation for board row failed!\n");
+                returnValue = 1;
+                break;
+            }
+        }
+    }
+    if (returnValue != 0) {
+        free(ROWS);
+        free(COLUMNS);
+        free(N_IN_A_ROW);
+    }
+    return returnValue;
+}
+
+/*
+ * Free dynamically allocated board memory
+ */
+void freeDynamicMemory(void) {
+    for (int i = 0; i < *ROWS; i++) {
+        free(BOARD[i]);
+    }
+    free(BOARD);
+    free(ROWS);
+    free(COLUMNS);
+    free(N_IN_A_ROW);
+}
+
+/*
+ * Request yes-or-no-question with default value
+ */
+enum yesOrNo yesOrNoQuestion(char *question, enum yesOrNo defaultAnswer) {
+    // Ask question till we get a valid answer
+    char answer;
+    do {
+        // Pose yes-or-no-question
+        printf("%s [Y/N] (%c): ", question, defaultAnswer == YES ? 'Y' : 'N');
+        // get answer char
+        answer = getchar();
+        // If nothing is entered, set default answer
+        if (answer == '\n') {
+            answer = defaultAnswer == YES ? 'Y' : 'N';
+        } else {
+            // Consume leftover chars till end of line
+            for (char c; (c = getchar()) != '\n' && c != EOF;) {
+                // When multiple characters were entered,
+                // set invalid answer to restart rematch-loop
+                if (answer != '\0') {
+                    answer = '\0';
+                }
+            }
+        }
+    } while (answer != 'Y' && answer != 'N' && answer != 'y' && answer != 'n');
+    
+    // Translate answer to enum
+    enum yesOrNo answerAsEnum = defaultAnswer;
+    switch(answer) {
+        case 'Y':
+        case 'y':
+            answerAsEnum = YES;
+            break;
+        case 'N':
+        case 'n':
+            answerAsEnum = NO;
+            break;
+    }
+    
+    // Return enum answer
+    return answerAsEnum;
+}
+
+/*
+ * Request an integer number in a given range, denoted by a lower bound and upper bound (inclusive)
+ */
+int requestIntInRange(char *question, int lowerBound, int upperBound) {
+    int returnValue;
+    bool validInput = false;
+    do {
+        printf("\n%s (min. %d, max. %d) > ", question, lowerBound, upperBound);
+        int result = scanf("%d", &returnValue);
+        if (result != 1) {
+            printf("Please provide a valid integer number!\n");
+        } else if (returnValue < lowerBound || returnValue > upperBound) {
+            printf("Please provide a valid number in the range %d - %d!\n", lowerBound, upperBound);
+        } else {
+            validInput = true;
+        }
+        // Consume leftover chars till end of line
+        for (char c; (c = getchar()) != '\n' && c != EOF;);
+    } while (!validInput);
+    return returnValue;
 }
 
 /*
  * Initialize the board (a.k.a. the playfield)
  */
-void initializeBoard(char board[ROWS][COLUMNS]) {
-    for (int i = 0; i < ROWS; i++) {
-        for (int j = 0; j < COLUMNS; j++) {
-            board[i][j] = BLANC_FIELD_VALUE;
+void initializeBoard(void) {
+    for (int i = 0; i < *ROWS; i++) {
+        for (int j = 0; j < *COLUMNS; j++) {
+            BOARD[i][j] = BLANC_FIELD_VALUE;
         }
     }
 }
@@ -155,8 +299,8 @@ int requestPlayerInput(int playerNbr) {
         int result = scanf("%d", &fieldNbr);
         if (result != 1) {
             printf("Please provide a valid integer that represents a field number!\n\n");
-        } else if (fieldNbr < 1 || fieldNbr > ROWS * COLUMNS) {
-            printf("Please provide a valid field number in the range 1 - %d!\n\n", ROWS * COLUMNS);
+        } else if (fieldNbr < 1 || fieldNbr > *ROWS * *COLUMNS) {
+            printf("Please provide a valid field number in the range 1 - %d!\n\n", *ROWS * *COLUMNS);
         } else {
             validInput = true;
         }
@@ -170,7 +314,7 @@ int requestPlayerInput(int playerNbr) {
  * Mark the board (a.k.a. the playfield) at the field denoted by the fieldNbr
  * with the character denoted by the mark, but only if it is not set already.
  */
-bool markBoard(char board[ROWS][COLUMNS], int fieldNbr, char mark) {
+bool markBoard(int fieldNbr, char mark) {
     // Initialize return value
     bool validMark = false;
     
@@ -178,22 +322,25 @@ bool markBoard(char board[ROWS][COLUMNS], int fieldNbr, char mark) {
     int rowIdx = getRowIdxForFieldNbr(fieldNbr);
     int columnIdx = getColumnIdxForFieldNbr(fieldNbr);
     
+    printf("rowIdx is %d\n", rowIdx);
+    printf("columnIdx is %d\n", columnIdx);
+    
     // Mark board if field is still blanc
-    if (board[rowIdx][columnIdx] == BLANC_FIELD_VALUE) {
-        board[rowIdx][columnIdx] = mark;
+    if (BOARD[rowIdx][columnIdx] == BLANC_FIELD_VALUE) {
+        BOARD[rowIdx][columnIdx] = mark;
         validMark = true;
     } else {
         printf("You cannot mark a field that has already been marked!\n\n");
     }
     
-    // return if mark is valid
+    // Return if mark is valid
     return validMark;
 }
 
 /*
  * Check if the current move made the current player win the game
  */
-bool chkWinCondition(char board[ROWS][COLUMNS], int fieldNbr, char mark) {
+bool chkWinCondition(int fieldNbr, char mark) {
     // Set return variable
     bool hasWon = false;
     
@@ -232,16 +379,16 @@ bool chkWinCondition(char board[ROWS][COLUMNS], int fieldNbr, char mark) {
      */
     do {
         // Count adjacent similar marks in the current direction and store it in the countMarksInAllDirections array
-        countMarksInAllDirections[arrIdx] = chkAdjMarksInDirection(board, rowIdx, columnIdx, rowStep, columnStep, mark);
+        countMarksInAllDirections[arrIdx] = chkAdjMarksInDirection(rowIdx, columnIdx, rowStep, columnStep, mark);
         // Check if we reach N_IN_A_ROW in the current direction
-        if (countMarksInAllDirections[arrIdx] + 1 == N_IN_A_ROW) {
+        if (countMarksInAllDirections[arrIdx] + 1 == *N_IN_A_ROW) {
             hasWon = true;
             break;
         }
         // When over half of the circle of directions, also check if we reach N_IN_A_ROW by combining opposite directions
         if (arrIdx > 3) {
             int countMarksInOppositeDirections = countMarksInAllDirections[arrIdx] + countMarksInAllDirections[arrIdx - 4];
-            if (countMarksInOppositeDirections + 1 >= N_IN_A_ROW) {
+            if (countMarksInOppositeDirections + 1 >= *N_IN_A_ROW) {
                 hasWon = true;
                 break;
             }
@@ -276,23 +423,23 @@ bool chkWinCondition(char board[ROWS][COLUMNS], int fieldNbr, char mark) {
 /*
  * Check the number of similar adjacent marks in the current direction
  */
-int chkAdjMarksInDirection(char board[ROWS][COLUMNS], int rowIdx, int columnIdx, int rowStep, int columnStep, char mark) {
+int chkAdjMarksInDirection(int rowIdx, int columnIdx, int rowStep, int columnStep, char mark) {
     // Check at max N_IN_A_ROW - 1 positions in the direction denoted by the rowStep and columnStep parameters
     // to find a N_IN_A_ROW long string of the current mark. Also keep track of the number of similar marks found
     // in this direction, since a string might be formed together with the opposite direction.
     int countMarksInDirection = 0;
     int idxNextMarkInStr = 1;
-    while (idxNextMarkInStr < N_IN_A_ROW) {
+    while (idxNextMarkInStr < *N_IN_A_ROW) {
         // Get indices of next field in direction
         int rowIdxNextMark = rowIdx + (idxNextMarkInStr * rowStep);
         int columnIdxNextMark = columnIdx + (idxNextMarkInStr * columnStep);
         // Check whether the current indices denote a field inside the board grid
-        if (rowIdxNextMark < 0 || rowIdxNextMark > ROWS - 1 ||
-            columnIdxNextMark < 0 || columnIdxNextMark > COLUMNS - 1) {
+        if (rowIdxNextMark < 0 || rowIdxNextMark > *ROWS - 1 ||
+            columnIdxNextMark < 0 || columnIdxNextMark > *COLUMNS - 1) {
             break;
         }
         // Check if the mark of this field is what whe are looking for
-        if (board[rowIdxNextMark][columnIdxNextMark] == mark) {
+        if (BOARD[rowIdxNextMark][columnIdxNextMark] == mark) {
             countMarksInDirection++;
         } else {
             // Otherwise break the loop since the string ends here on this side
@@ -309,10 +456,10 @@ int chkAdjMarksInDirection(char board[ROWS][COLUMNS], int rowIdx, int columnIdx,
  */
 int getRowIdxForFieldNbr(int fieldNbr) {
     int rowIdx;
-    if (fieldNbr % COLUMNS == 0) {
-        rowIdx = (fieldNbr / ROWS) - 1;
+    if (fieldNbr % *COLUMNS == 0) {
+        rowIdx = (fieldNbr / *COLUMNS) - 1;
     } else {
-        rowIdx = fieldNbr / ROWS;
+        rowIdx = fieldNbr / *COLUMNS;
     }
     return rowIdx;
 }
@@ -322,10 +469,10 @@ int getRowIdxForFieldNbr(int fieldNbr) {
  */
 int getColumnIdxForFieldNbr(int fieldNbr) {
     int columnIdx;
-    if (fieldNbr % COLUMNS == 0) {
-        columnIdx = COLUMNS - 1;
+    if (fieldNbr % *COLUMNS == 0) {
+        columnIdx = *COLUMNS - 1;
     } else {
-        columnIdx = (fieldNbr % ROWS) - 1;
+        columnIdx = (fieldNbr % *COLUMNS) - 1;
     }
     return columnIdx;
 }
@@ -333,12 +480,12 @@ int getColumnIdxForFieldNbr(int fieldNbr) {
 /*
  * Refresh everything drawn on the screen
  */
-int refreshScreen(bool isPlayer1X, int player1Score, int player2Score, char board[ROWS][COLUMNS]) {
+int refreshScreen(bool isPlayer1X, int player1Score, int player2Score) {
     printf("\033[2J\033[H");
     int returnCode = 0;
     returnCode = printHeader(isPlayer1X, player1Score, player2Score);
     if (returnCode != 0) return returnCode;
-    returnCode = drawBoard(board);
+    returnCode = drawBoard();
     if (returnCode != 0) return returnCode;
     return returnCode;
 }
@@ -349,7 +496,7 @@ int refreshScreen(bool isPlayer1X, int player1Score, int player2Score, char boar
 int printHeader(bool isPlayer1X, int player1Score, int player2Score) {
     int returnCode = 0;
     int fieldWidth = calcFieldWidth();
-    int rowWidth = (COLUMNS * (fieldWidth + 2)) + COLUMNS - 1;
+    int rowWidth = (*COLUMNS * (fieldWidth + 2)) + *COLUMNS - 1;
     printTitle(rowWidth);
     returnCode = printScores(isPlayer1X, player1Score, player2Score, rowWidth);
     return returnCode;
@@ -398,34 +545,34 @@ int printScores(bool isPlayer1X, int player1Score, int player2Score, int rowWidt
 /*
  * Draw the board itself (a.k.a. the playfield)
  */
-int drawBoard(char board[ROWS][COLUMNS]) {
+int drawBoard(void) {
     int returnCode = 0;
     int fieldWidth = calcFieldWidth();
     if (fieldWidth > 0) {
-        for (int i = 0; i < ROWS; i++) {
-            // sub top row
-            for (int j = 0; j < COLUMNS; j++) {
+        for (int i = 0; i < *ROWS; i++) {
+            // Sub top row
+            for (int j = 0; j < *COLUMNS; j++) {
                 if (j != 0) {
                     // Draw unicode box drawing vertical bar character
                     printf("\u2502");
                 }
-                char fieldValue = board[i][j];
+                char fieldValue = BOARD[i][j];
                 if (fieldValue != BLANC_FIELD_VALUE) {
                     printf(" %*c ", fieldWidth, fieldValue);
                 } else {
-                    printf(" %*d ", fieldWidth, i * COLUMNS + j + 1);
+                    printf(" %*d ", fieldWidth, i * *COLUMNS + j + 1);
                 }
-                if (j == COLUMNS - 1) {
+                if (j == *COLUMNS - 1) {
                     printf("\n");
                 }
             }
-            // sub bottom row
-            for (int j = 0; j < COLUMNS; j++) {
-                if (j != 0 && i != ROWS - 1) {
+            // Sub bottom row
+            for (int j = 0; j < *COLUMNS; j++) {
+                if (j != 0 && i != *ROWS - 1) {
                     // Draw unicode box drawing cross character
                     printf("\u253C");
                 }
-                if (i != ROWS - 1) {
+                if (i != *ROWS - 1) {
                     for (int k = 0; k < fieldWidth + 2; k++) {
                         // Draw unicode box drawing horizontal bar character
                         printf("\u2500");
@@ -433,7 +580,7 @@ int drawBoard(char board[ROWS][COLUMNS]) {
                 } else {
                     printf(" %*c ", fieldWidth, BLANC_FIELD_VALUE);
                 }
-                if (j == COLUMNS - 1) {
+                if (j == *COLUMNS - 1) {
                     printf("\n");
                 }
             }
@@ -449,11 +596,11 @@ int drawBoard(char board[ROWS][COLUMNS]) {
  */
 int calcFieldWidth() {
     int fieldWidth = -1;
-    if (ROWS <= 40 && COLUMNS <= 60) {
-        fieldWidth = calcNumberWidth(ROWS * COLUMNS);
+    if (*ROWS <= MAX_ROWS && *COLUMNS <= MAX_COLUMNS) {
+        fieldWidth = calcNumberWidth(*ROWS * *COLUMNS);
     }
     if (fieldWidth < 0) {
-        printf("Board size to large: %d rows by %d columns!\n\n", ROWS, COLUMNS);
+        printf("Board size to large: %d rows by %d columns!\n\n", *ROWS, *COLUMNS);
     }
     return fieldWidth;
 }
