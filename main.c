@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
                 case NO:
                     isEscExitGame = true;
                     printf("\nAs if you have anything better to do... ;)\n");
+                    getchar();
                     break;
             }
             if (returnCode != 0) break;
@@ -150,6 +151,7 @@ int main(int argc, char **argv) {
                 case NO:
                     isEscExitGame = true;
                     printf("\nAs if you have anything better to do... ;)\n");
+                    getchar();
                     break;
             }
             if (returnCode != 0) break;
