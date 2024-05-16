@@ -24,6 +24,7 @@ int requestPlayerInput(int playerNbr);
 bool markBoard(int fieldNbr, char mark);
 bool chkWinCondition(int fieldNbr, char mark);
 int chkAdjMarksInDirection(int rowIdx, int columnIdx, int rowStep, int columnStep, char mark);
+bool chkForDraw(void);
 int getRowIdxForFieldNbr(int fieldNbr);
 int getColumnIdxForFieldNbr(int fieldNbr);
 int refreshScreen(bool isPlayer1X, int player1Score, int player2Score);
@@ -60,7 +61,7 @@ int main(int argc, char **argv) {
     int player1Score = 0;
     int player2Score = 0;
     int fieldNbr = 0;
-    bool isGameOver = false;
+    bool isGameWon = false;
     bool isEscExitGame = false;
 
     // Initialize game
@@ -102,9 +103,9 @@ int main(int argc, char **argv) {
         returnCode = refreshScreen(isPlayer1X, player1Score, player2Score);
         if (returnCode != 0) break;
         // Check if current player has won
-        isGameOver = chkWinCondition(fieldNbr, mark);
+        isGameWon = chkWinCondition(fieldNbr, mark);
         // If current player wins, propose optional rematch
-        if (isGameOver) {
+        if (isGameWon) {
             // Say who wins
             isPlayer1Turn ? printf("=> Player1 wins!\n\n") : printf("=> Player2 wins!\n\n");
             // Pose rematch game question
@@ -115,6 +116,28 @@ int main(int argc, char **argv) {
                 case YES:
                     // Increment player score
                     isPlayer1Turn ? player1Score++ : player2Score++;
+                    // Switch who's X now, since X will always start
+                    isPlayer1X = !isPlayer1X;
+                    // Switch who gets to start based on who's X
+                    isPlayer1Turn = isPlayer1X;
+                    // Initialize game again
+                    initializeBoard();
+                    returnCode = refreshScreen(isPlayer1X, player1Score, player2Score);
+                    break;
+                // When game is to be exited
+                case NO:
+                    isEscExitGame = true;
+                    printf("\nAs if you have anything better to do... ;)\n");
+                    break;
+            }
+            if (returnCode != 0) break;
+        } else if(chkForDraw()) {
+            printf("=> It's a draw!\n\n");
+            enum yesOrNo answer = yesOrNoQuestion("Do you want to continue playing?", YES);
+            // Check the answer for the continue question
+            switch (answer) {
+                // When rematch is selected
+                case YES:
                     // Switch who's X now, since X will always start
                     isPlayer1X = !isPlayer1X;
                     // Switch who gets to start based on who's X
@@ -446,6 +469,21 @@ int chkAdjMarksInDirection(int rowIdx, int columnIdx, int rowStep, int columnSte
         idxNextMarkInStr++;
     }
     return countMarksInDirection;
+}
+
+/*
+ * Check if the last move got us in a draw situation
+ */
+bool chkForDraw(void) {
+    bool isDraw = true;
+    for (int i = 0; i < *ROWS; i++) {
+        for (int j = 0; j < *COLUMNS; j++) {
+            if (BOARD[i][j] == BLANC_FIELD_VALUE) {
+                isDraw = false;
+            }
+        }
+    }
+    return isDraw;
 }
 
 /*
