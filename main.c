@@ -3,6 +3,16 @@
 #include <string.h>
 #include <stdlib.h>
 
+// When building a native Windows executable with MinGW,
+// initialize console to UTF-8 to allow unicode characters
+#if defined(__MINGW32__) || defined(__MINGW64__)
+    #include <windows.h>
+    // Function to set the console output code page to UTF-8 in MinGW
+    void init_console(void) {
+        SetConsoleOutputCP(CP_UTF8);
+    }
+#endif
+
 // Some hardcoded constants
 #define TITLE "Tic Tac Toe"
 #define TITLE_LENGTH strlen(TITLE)
@@ -45,6 +55,10 @@ char **BOARD = NULL;
  * main function with main game loop
  */
 int main(int argc, char **argv) {
+    #if defined(__MINGW32__) || defined(__MINGW64__)
+        init_console();
+    #endif
+    
     int returnCode = 0;
         
     // Request global constants with game properties
